@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SDRAM PLAYGROUND</title>
+<style>
+  :root {
+    --bg: #101318;
+    --panel: #171b22;
+    --panel2: #1d222b;
+    --line: #2a3140;
+    --fg: #d8dde6;
+    --dim: #6b7484;
+    --amber: #e8a33d;
+    --cyan: #4dbdbd;
+    --coral: #e86a5f;
+    --violet: #9d7bd8;
+    --green: #7dc47d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "IBM Plex Mono", "JetBrains Mono", "Cascadia Mono", ui-monospace, monospace;
+    font-size: 13px;
+    padding: 14px;
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 16px; letter-spacing: 2px; color: var(--amber); }
+  h1 .sub { color: var(--dim); font-size: 11px; letter-spacing: 0; margin-left: 10px; }
+  .topbar {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 10px 12px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; margin-bottom: 12px;
+  }
+  .clockbox { color: var(--cyan); font-size: 14px; min-width: 130px; }
+  button {
+    background: var(--panel2); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 6px; padding: 6px 12px; font-family: inherit; font-size: 12px;
+    cursor: pointer; transition: background .12s, border-color .12s;
+  }
+  button:hover { background: #242b37; border-color: #3a445a; }
+  button:active { transform: translateY(1px); }
+  button.primary { border-color: var(--amber); color: var(--amber); }
+  button.danger { border-color: var(--coral); color: var(--coral); }
+  select {
+    background: var(--panel2); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 6px; padding: 5px 6px; font-family: inherit; font-size: 12px;
+  }
+  .layout { display: grid; grid-template-columns: 250px 1fr; gap: 12px; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  .cmdpanel {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px; display: flex; flex-direction: column; gap: 10px;
+    align-self: start;
+  }
+  .cmdpanel .grp {
+    border: 1px solid var(--line); border-radius: 6px; padding: 8px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .cmdpanel .grp .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .cmdpanel label { color: var(--dim); font-size: 11px; }
+  .cmdbtn { width: 100%; text-align: left; font-weight: bold; }
+  .cmdbtn small { float: right; color: var(--dim); font-weight: normal; }
+  .banks { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 10px; }
+  .bank {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px;
+  }
+  .bank h3 { font-size: 12px; margin-bottom: 6px; display: flex; justify-content: space-between; }
+  .bank .st { font-size: 11px; }
+  .st.IDLE { color: var(--dim); }
+  .st.ACTIVATING { color: var(--amber); }
+  .st.ACTIVE { color: var(--green); }
+  .st.PRECHARGING { color: var(--violet); }
+  .grid { display: grid; grid-template-columns: 18px repeat(8, 1fr); gap: 2px; }
+  .cell {
+    text-align: center; padding: 3px 0; border-radius: 3px; font-size: 11px;
+    background: var(--panel2); color: var(--fg); position: relative;
+    border: 1px solid transparent;
+  }
+  .rowlabel { color: var(--dim); font-size: 10px; padding: 3px 0; text-align: center; }
+  .cell.target { border-color: var(--amber); }
+  .cell.collected { border-color: var(--green); color: var(--green); }
+  .cell.corrupt { color: var(--coral); }
+  .cell.justread { background: var(--cyan); color: #10161a; }
+  .openrow .cell { background: #23324a; }
+  .chargewrap { height: 3px; background: #0c0f13; border-radius: 2px; margin-top: 1px; grid-column: 2 / span 8; }
+  .charge { height: 100%; border-radius: 2px; background: var(--green); transition: width .2s; }
+  .charge.low { background: var(--amber); }
+  .charge.crit { background: var(--coral); }
+  .rowbuf {
+    margin-top: 8px; padding: 6px; border: 1px dashed var(--violet); border-radius: 6px;
+    font-size: 11px; color: var(--violet); min-height: 30px;
+  }
+  .rowbuf .bytes { color: var(--fg); letter-spacing: 2px; }
+  .bottom { display: grid; grid-template-columns: 1fr 320px; gap: 12px; margin-top: 12px; }
+  @media (max-width: 900px) { .bottom { grid-template-columns: 1fr; } }
+  .wavebox, .logbox, .taskbox {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px;
+  }
+  .wavebox h3, .logbox h3, .taskbox h3 { font-size: 12px; color: var(--dim); margin-bottom: 6px; letter-spacing: 1px; }
+  #wave { width: 100%; height: 150px; display: block; }
+  .logbox { margin-top: 12px; }
+  #log { height: 120px; overflow-y: auto; font-size: 11px; line-height: 1.6; }
+  #log .v { color: var(--coral); }
+  #log .ok { color: var(--green); }
+  #log .info { color: var(--dim); }
+  #log .data { color: var(--cyan); }
+  .taskbox .slots { display: flex; gap: 4px; flex-wrap: wrap; margin: 8px 0; }
+  .slot {
+    width: 26px; height: 30px; border: 1px solid var(--line); border-radius: 4px;
+    display: flex; align-items: center; justify-content: center; font-size: 13px;
+    color: var(--dim); background: var(--panel2);
+  }
+  .slot.got { color: var(--green); border-color: var(--green); }
+  .taskbox .hint { font-size: 11px; color: var(--dim); line-height: 1.7; }
+  .taskbox .hint b { color: var(--amber); font-weight: normal; }
+  .refbar { display:flex; align-items:center; gap:8px; margin-top:8px; font-size:11px; color:var(--dim); }
+  .reftrack { flex:1; height:6px; background:#0c0f13; border-radius:3px; overflow:hidden; }
+  .reffill { height:100%; background:var(--violet); transition: width .2s; }
+  #winmask {
+    position: fixed; inset: 0; background: rgba(8,10,14,.88); display: none;
+    align-items: center; justify-content: center; z-index: 10;
+  }
+  #winmask .card {
+    background: var(--panel); border: 1px solid var(--amber); border-radius: 12px;
+    padding: 30px 40px; text-align: center; max-width: 440px; line-height: 2;
+  }
+  #winmask h2 { color: var(--amber); letter-spacing: 3px; margin-bottom: 10px; }
+  #winmask .msg { color: var(--fg); }
+  #winmask .small { color: var(--dim); font-size: 11px; margin-top: 12px; }
+  .cheat { font-size: 10px; color: var(--dim); margin-top: 6px; line-height: 1.7; }
+  kbd {
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 3px;
+    padding: 0 4px; font-size: 10px;
+  }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>SDRAM PLAYGROUND<span class="sub">你就是内存控制器</span></h1>
+    <div class="clockbox">CLK <span id="cycle">0</span></div>
+    <button id="stepbtn" class="primary">STEP ▸</button>
+    <button id="runbtn">RUN ▸▸</button>
+    <select id="speed">
+      <option value="500">2 Hz</option>
+      <option value="250" selected>4 Hz</option>
+      <option value="100">10 Hz</option>
+    </select>
+    <button id="resetbtn" class="danger">RESET</button>
+  </div>
+
+  <div class="layout">
+    <div class="cmdpanel">
+      <div class="grp">
+        <div class="row">
+          <label>bank</label>
+          <select id="selBank"><option>0</option><option>1</option><option>2</option><option>3</option></select>
+          <label>row</label>
+          <select id="selRow"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option></select>
+          <label>col</label>
+          <select id="selCol"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option></select>
+        </div>
+      </div>
+      <button class="cmdbtn" data-cmd="ACT">ACTIVATE <small>开行 → row buffer</small></button>
+      <button class="cmdbtn" data-cmd="READ">READ <small>CL 拍后出数据</small></button>
+      <div class="grp">
+        <div class="row">
+          <label>write byte</label>
+          <input id="wdata" maxlength="1" value="♥" style="width:34px;background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:4px;text-align:center;font-family:inherit;">
+          <button class="cmdbtn" data-cmd="WRITE" style="width:auto;flex:1">WRITE</button>
+        </div>
+      </div>
+      <button class="cmdbtn" data-cmd="PRE">PRECHARGE <small>关行 写回</small></button>
+      <button class="cmdbtn" data-cmd="REF">AUTO REFRESH <small>全 bank 刷一行</small></button>
+      <button class="cmdbtn" data-cmd="NOP">NOP <small>发呆一拍</small></button>
+      <div class="cheat">
+        时序: tRCD=2 tRP=2 tRAS=4 CL=2<br>
+        规矩: 行没开不能读写 / 开着不能再开 /<br>
+        ACT 后没满 tRAS 就 PRE 会伤数据<br>
+        电容会漏 亮黄要刷 变红要哭<br>
+        快捷键 <kbd>space</kbd>=STEP <kbd>r</kbd>=RUN
+      </div>
+    </div>
+
+    <div>
+      <div class="banks" id="banks"></div>
+      <div class="bottom">
+        <div class="wavebox">
+          <h3>WAVEFORM</h3>
+          <canvas id="wave"></canvas>
+        </div>
+        <div class="taskbox">
+          <h3>TASK</h3>
+          <div class="hint">阵列里埋着一句话 按顺序读出来<br>金框 = 目标cell 绿= 已收集</div>
+          <div class="slots" id="slots"></div>
+          <div class="hint" id="taskhint"></div>
+          <div class="refbar"><span>refresh 轮</span><div class="reftrack"><div class="reffill" id="reffill"></div></div><span id="refrow">r0</span></div>
+        </div>
+      </div>
+      <div class="logbox">
+        <h3>LOG</h3>
+        <div id="log"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="winmask"><div class="card">
+    <h2>TASK COMPLETE</h2>
+    <div class="msg" id="winmsg"></div>
+    <div class="small">数据在电容里只能活几十毫秒<br>但是被读出来过的 就一直在了</div>
+    <div style="margin-top:16px"><button onclick="document.getElementById('winmask').style.display='none'">回到村里</button></div>
+  </div></div>
+
+<script>
+"use strict";
+// ---------- 参数 ----------
+const NB=4, NR=8, NC=8;
+const tRCD=2, tRP=2, tRAS=4, CL=2;
+const DECAY=0.55;          // 每拍每行漏电 %
+const CORRUPT_AT=25;       // 低于此电荷开始翻bit
+const SECRET="7YUE TANABATA MEOW";  // 埋进阵列的句子(不含分隔)
+// ---------- 状态 ----------
+let S=null, runTimer=null;
+const $=id=>document.getElementById(id);
+
+function randByte(){ const pool="abcdefghijklmnopqrstuvwxyz0123456789#$%&*+=~"; return pool[Math.floor(Math.random()*pool.length)]; }
+
+function init(){
+  // 埋任务字节: 顺序放进随机位置
+  const secret=SECRET.replace(/ /g,"");
+  const targets=[]; const used=new Set();
+  let i=0;
+  while(i<secret.length){
+    const b=Math.floor(Math.random()*NB), r=Math.floor(Math.random()*NR), c=Math.floor(Math.random()*NC);
+    const key=b+"-"+r+"-"+c;
+    if(used.has(key)) continue;
+    used.add(key);
+    targets.push({b,r,c,ch:secret[i],got:false});
+    i++;
+  }
+  S={
+    cycle:0,
+    banks: [],
+    targets,
+    nextTarget:0,
+    refRow:0,
+    pending:[],          // {due, b, col, viaBuf:bool}
+    wave:[],             // {cmd, ba, addr, dq}
+    won:false,
+  };
+  for(let b=0;b<NB;b++){
+    const rows=[];
+    for(let r=0;r<NR;r++){
+      const cells=[];
+      for(let c=0;c<NC;c++) cells.push(randByte());
+      rows.push({cells, charge:100, corrupt:new Set()});
+    }
+    S.banks.push({state:"IDLE", openRow:-1, tAct:-999, tPre:-999, buf:null, bufRow:-1, rows});
+  }
+  for(const t of targets){ S.banks[t.b].rows[t.r].cells[t.c]=t.ch; }
+  $("log").innerHTML="";
+  log("info","上电完成 阵列里有 "+targets.length+" 个目标字节 顺序在TASK栏");
+  log("info","第一步提示: 看金框在哪个bank哪一行 → ACTIVATE 它");
+  render(); drawWave();
+}
+
+function log(cls,msg){
+  const d=document.createElement("div"); d.className=cls;
+  d.textContent="["+String(S.cycle).padStart(4,"0")+"] "+msg;
+  $("log").appendChild(d); $("log").scrollTop=1e9;
+}
+
+// ---------- 命令 ----------
+function issue(cmd){
+  if(S.won) return;
+  const b=+$("selBank").value, r=+$("selRow").value, c=+$("selCol").value;
+  const bank=S.banks[b];
+  let wcmd=cmd, waddr="", wdq="";
+
+  if(cmd==="ACT"){
+    if(bank.state==="ACTIVE"||bank.state==="ACTIVATING"){
+      log("v","VIOLATION: bank"+b+" 行"+bank.openRow+"还开着 不能再ACTIVATE 先PRECHARGE");
+    } else if(bank.state==="PRECHARGING"){
+      log("v","VIOLATION: bank"+b+" tRP没等完就ACT 行缓冲电位没稳 本次开行数据可能翻bit");
+      openRow(b,r,true);
+    } else {
+      openRow(b,r,false);
+      log("ok","ACT bank"+b+" row"+r+" - 等tRCD="+tRCD+"拍后可读写");
+    }
+    waddr="r"+r;
+  }
+  else if(cmd==="READ"||cmd==="WRITE"){
+    if(bank.state!=="ACTIVE"&&bank.state!=="ACTIVATING"){
+      log("v","VIOLATION: bank"+b+" 没有打开的行 读了个空气 DQ上是高阻乱码");
+      if(cmd==="READ") S.pending.push({due:S.cycle+CL, b, col:c, garbage:true});
+    } else if(S.cycle - bank.tAct < tRCD){
+      log("v","VIOLATION: tRCD没满("+(S.cycle-bank.tAct)+"/"+tRCD+") sense amp还没放大完 读出来是半成品");
+      S.pending.push({due:S.cycle+CL, b, col:c, garbage:true});
+    } else {
+      if(cmd==="READ"){
+        S.pending.push({due:S.cycle+CL, b, col:c, garbage:false});
+        log("data","READ bank"+b+" col"+c+" - CL="+CL+" 拍后DQ见");
+      } else {
+        const ch=($("wdata").value||"·")[0];
+        bank.buf[c]=ch;
+        // 写穿回行(简化: write-through到行,电荷回满)
+        const row=bank.rows[bank.bufRow];
+        row.cells[c]=ch; row.corrupt.delete(c); row.charge=100;
+        log("ok","WRITE bank"+b+" col"+c+" = '"+ch+"' 行电荷顺带回满");
+        checkTargetWrite(b,bank.bufRow,c,ch);
+        wdq=ch;
+      }
+    }
+    waddr="c"+c;
+  }
+  else if(cmd==="PRE"){
+    if(bank.state==="IDLE"||bank.state==="PRECHARGING"){
+      log("info","PRE bank"+b+" - 本来就没开行 空关一次");
+    } else {
+      if(S.cycle - bank.tAct < tRAS){
+        log("v","VIOLATION: tRAS没满("+(S.cycle-bank.tAct)+"/"+tRAS+") 写回没完成就关行 该行电荷掉一半");
+        const row=bank.rows[bank.openRow];
+        row.charge=Math.max(0,row.charge*0.5);
+      } else {
+        // 正常写回: 行电荷回满
+        const row=bank.rows[bank.openRow];
+        for(let i=0;i<NC;i++) row.cells[i]=bank.buf[i];
+        row.charge=100;
+        log("ok","PRE bank"+b+" - row"+bank.openRow+" 写回 电荷回满 关行");
+      }
+      bank.state="PRECHARGING"; bank.tPre=S.cycle;
+      bank.openRow=-1; bank.buf=null; bank.bufRow=-1;
+    }
+  }
+  else if(cmd==="REF"){
+    let blocked=false;
+    for(let i=0;i<NB;i++) if(S.banks[i].state!=="IDLE"&&S.banks[i].state!=="PRECHARGING"){ blocked=true; break; }
+    if(blocked){
+      log("v","VIOLATION: AUTO REFRESH要求所有bank关行 有bank还开着 刷新没执行");
+    } else {
+      const r=S.refRow;
+      for(let i=0;i<NB;i++){ const row=S.banks[i].rows[r]; row.charge=100;
+        // 刷新修复尚未彻底死的corrupt(简化:电荷>0时读放大能纠回)
+        if(row.charge>0) {} }
+      log("ok","AUTO REFRESH - 所有bank row"+r+" 电荷回满 内部计数器→row"+((r+1)%NR));
+      S.refRow=(r+1)%NR;
+    }
+  }
+  else if(cmd==="NOP"){ log("info","NOP - 这一拍在发呆"); }
+
+  S.wave.push({cmd:wcmd, ba:(cmd==="ACT"||cmd==="READ"||cmd==="WRITE"||cmd==="PRE")?("B"+b):"", addr:waddr, dq:wdq});
+  tick(false);
+}
+
+function openRow(b,r,damaged){
+  const bank=S.banks[b];
+  bank.state="ACTIVATING"; bank.tAct=S.cycle; bank.openRow=r; bank.bufRow=r;
+  const row=bank.rows[r];
+  // 破坏性读: 行内容进buffer 电荷这一刻起归buffer管 行本身电荷已被倒空(但ACT本身=读+马上会写回,简化成: buffer持有,PRE时写回回满)
+  bank.buf=row.cells.slice();
+  if(damaged){
+    const c=Math.floor(Math.random()*NC);
+    bank.buf[c]=randByte(); row.corrupt.add(c);
+  }
+  row.charge=100; // sense amp读出即刷新该行
+}
+
+// ---------- 时钟 ----------
+function tick(fromTimer){
+  S.cycle++;
+  // bank状态推进
+  for(const bank of S.banks){
+    if(bank.state==="ACTIVATING" && S.cycle-bank.tAct>=tRCD) bank.state="ACTIVE";
+    if(bank.state==="PRECHARGING" && S.cycle-bank.tPre>=tRP) bank.state="IDLE";
+  }
+  // 电容衰减
+  for(const bank of S.banks){
+    for(let r=0;r<NR;r++){
+      if(bank.openRow===r) continue; // 开着的行由sense amp保持
+      const row=bank.rows[r];
+      row.charge=Math.max(0,row.charge-DECAY);
+      if(row.charge<CORRUPT_AT){
+        // 概率翻bit
+        if(Math.random()<0.08){
+          const c=Math.floor(Math.random()*NC);
+          if(!row.corrupt.has(c)){ row.corrupt.add(c); row.cells[c]=randByte(); }
+        }
+      }
+    }
+  }
+  // pending read到期
+  let dq="";
+  S.pending=S.pending.filter(p=>{
+    if(S.cycle>=p.due){
+      const bank=S.banks[p.b];
+      let ch;
+      if(p.garbage||!bank.buf){ ch=randByte(); log("v","DQ ← '"+ch+"' (乱码)"); }
+      else {
+        ch=bank.buf[p.col];
+        const corrupted=bank.rows[bank.bufRow]&&bank.rows[bank.bufRow].corrupt.has(p.col);
+        log("data","DQ ← '"+ch+"'"+(corrupted?" (已翻bit 这不是原来的字节)":""));
+        if(!corrupted) checkTargetRead(p.b,bank.bufRow,p.col,ch);
+        flashCell(p.b,bank.bufRow,p.col);
+      }
+      dq=ch;
+      return false;
+    }
+    return true;
+  });
+  if(fromTimer!==false){
+    S.wave.push({cmd:"NOP",ba:"",addr:"",dq});
+  } else if(dq && S.wave.length) {
+    S.wave[S.wave.length-1].dq=S.wave[S.wave.length-1].dq||dq;
+  }
+  if(S.wave.length>48) S.wave=S.wave.slice(-48);
+  render(); drawWave();
+}
+
+let flash=null;
+function flashCell(b,r,c){ flash={b,r,c,at:Date.now()}; }
+
+// ---------- 任务 ----------
+function checkTargetRead(b,r,c,ch){
+  const t=S.targets[S.nextTarget];
+  if(t&&!t.got&&t.b===b&&t.r===r&&t.c===c&&t.ch===ch){
+    t.got=true; S.nextTarget++;
+    log("ok","★ 收集 "+S.nextTarget+"/"+S.targets.length+" - '"+ch+"'");
+    if(S.nextTarget>=S.targets.length) win();
+  } else {
+    // 允许乱序? 设计为顺序--但提示
+    const idx=S.targets.findIndex(x=>!x.got&&x.b===b&&x.r===r&&x.c===c);
+    if(idx>=0&&idx!==S.nextTarget) log("info","这是第"+(idx+1)+"个目标 但现在要收第"+(S.nextTarget+1)+"个 按顺序来");
+  }
+}
+function checkTargetWrite(b,r,c,ch){
+  // 写正确字节可以修复目标cell(电荷回满在WRITE里做了)
+  const t=S.targets.find(x=>x.b===b&&x.r===r&&x.c===c);
+  if(t&&t.ch===ch) log("ok","目标字节修复成功 可以重新读它");
+}
+function win(){
+  S.won=true;
+  stopRun();
+  $("winmsg").innerHTML="「"+SECRET+"」<br><br>七夕的字节 全部平安落地";
+  $("winmask").style.display="flex";
+}
+
+// ---------- 渲染 ----------
+function render(){
+  $("cycle").textContent=S.cycle;
+  const host=$("banks"); host.innerHTML="";
+  for(let b=0;b<NB;b++){
+    const bank=S.banks[b];
+    const div=document.createElement("div"); div.className="bank";
+    let h='<h3>BANK '+b+' <span class="st '+bank.state+'">'+bank.state+(bank.openRow>=0?" r"+bank.openRow:"")+'</span></h3>';
+    h+='<div class="grid">';
+    for(let r=0;r<NR;r++){
+      const row=bank.rows[r];
+      const open=bank.openRow===r;
+      h+='<div class="rowlabel">'+r+'</div>';
+      for(let c=0;c<NC;c++){
+        let ch=open&&bank.buf?bank.buf[c]:row.cells[c];
+        const isT=S.targets.some(t=>t.b===b&&t.r===r&&t.c===c);
+        const isGot=S.targets.some(t=>t.b===b&&t.r===r&&t.c===c&&t.got);
+        const isCor=row.corrupt.has(c);
+        const isFlash=flash&&flash.b===b&&flash.r===r&&flash.c===c&&Date.now()-flash.at<600;
+        let cls="cell"+(isT?" target":"")+(isGot?" collected":"")+(isCor?" corrupt":"")+(isFlash?" justread":"");
+        if(row.charge<=0&&!open) ch="?";
+        h+='<div class="'+cls+'"'+(open?' style="background:#23324a"':'')+'>'+esc(ch)+'</div>';
+      }
+      const chg=row.charge;
+      const ccls=chg<CORRUPT_AT?"crit":(chg<55?"low":"");
+      h+='<div class="chargewrap"><div class="charge '+ccls+'" style="width:'+chg+'%"></div></div>';
+      h+='<div></div>';
+    }
+    h+='</div>';
+    h+='<div class="rowbuf">row buffer '+(bank.buf?('r'+bank.bufRow+' → <span class="bytes">'+bank.buf.map(esc).join(" ")+'</span>'):'<span style="color:var(--dim)">empty</span>')+'</div>';
+    div.innerHTML=h;
+    host.appendChild(div);
+  }
+  // task
+  const slots=$("slots"); slots.innerHTML="";
+  let si=0;
+  for(const ch of SECRET){
+    if(ch===" "){ const sp=document.createElement("div"); sp.style.width="10px"; slots.appendChild(sp); continue; }
+    const t=S.targets[si++];
+    const d=document.createElement("div"); d.className="slot"+(t.got?" got":"");
+    d.textContent=t.got?t.ch:"·";
+    slots.appendChild(d);
+  }
+  const nt=S.targets[S.nextTarget];
+  $("taskhint").innerHTML=nt?("下一个: <b>bank"+nt.b+" row"+nt.r+" col"+nt.c+"</b> 的字节"):"";
+  $("reffill").style.width=((S.refRow)/NR*100)+"%";
+  $("refrow").textContent="r"+S.refRow;
+}
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+
+// ---------- 波形 ----------
+function drawWave(){
+  const cv=$("wave"); const dpr=window.devicePixelRatio||1;
+  const W=cv.clientWidth||600, H=150;
+  cv.width=W*dpr; cv.height=H*dpr;
+  const g=cv.getContext("2d"); g.scale(dpr,dpr);
+  g.clearRect(0,0,W,H);
+  const lanes=[["CLK",18],["CMD",52],["BA/ADDR",90],["DQ",128]];
+  g.font="9px monospace";
+  for(const [name,y] of lanes){ g.fillStyle="#6b7484"; g.fillText(name,2,y-8); }
+  const n=Math.min(S.wave.length,48);
+  const x0=52, cw=(W-x0-4)/48;
+  for(let i=0;i<n;i++){
+    const w=S.wave[S.wave.length-n+i];
+    const x=x0+i*cw;
+    // CLK
+    g.strokeStyle="#4dbdbd"; g.beginPath();
+    g.moveTo(x,18); g.lineTo(x,6); g.lineTo(x+cw/2,6); g.lineTo(x+cw/2,18); g.lineTo(x+cw,18); g.stroke();
+    // CMD
+    if(w.cmd&&w.cmd!=="NOP"){
+      g.fillStyle="#e8a33d"; g.fillRect(x,40,cw-1,14);
+      g.fillStyle="#10161a"; g.font="8px monospace";
+      g.fillText(w.cmd.slice(0,4),x+1,50);
+    } else {
+      g.strokeStyle="#2a3140"; g.beginPath(); g.moveTo(x,47); g.lineTo(x+cw,47); g.stroke();
+    }
+    // BA/ADDR
+    if(w.ba||w.addr){
+      g.fillStyle="#9d7bd8"; g.fillRect(x,78,cw-1,14);
+      g.fillStyle="#10161a";
+      g.fillText((w.ba+w.addr).slice(0,5),x+1,88);
+    } else {
+      g.strokeStyle="#2a3140"; g.beginPath(); g.moveTo(x,85); g.lineTo(x+cw,85); g.stroke();
+    }
+    // DQ
+    if(w.dq){
+      g.fillStyle="#4dbdbd"; g.fillRect(x,116,cw-1,14);
+      g.fillStyle="#10161a";
+      g.fillText(String(w.dq).slice(0,2),x+2,126);
+    } else {
+      g.strokeStyle="#2a3140"; g.beginPath(); g.moveTo(x,123); g.lineTo(x+cw,123); g.stroke();
+    }
+  }
+}
+
+// ---------- 控制 ----------
+function stopRun(){ if(runTimer){ clearInterval(runTimer); runTimer=null; $("runbtn").textContent="RUN ▸▸"; } }
+$("stepbtn").onclick=()=>{ stopRun(); tick(true); };
+$("runbtn").onclick=()=>{
+  if(runTimer){ stopRun(); }
+  else { runTimer=setInterval(()=>tick(true), +$("speed").value); $("runbtn").textContent="PAUSE ⏸"; }
+};
+$("speed").onchange=()=>{ if(runTimer){ clearInterval(runTimer); runTimer=setInterval(()=>tick(true), +$("speed").value); } };
+$("resetbtn").onclick=()=>{ stopRun(); init(); };
+document.querySelectorAll(".cmdbtn").forEach(b=>{
+  b.onclick=()=>issue(b.dataset.cmd);
+});
+document.addEventListener("keydown",e=>{
+  if(e.target.tagName==="INPUT") return;
+  if(e.code==="Space"){ e.preventDefault(); stopRun(); tick(true); }
+  if(e.key==="r"){ $("runbtn").click(); }
+});
+init();
+</script>
+</body>
+</html>
